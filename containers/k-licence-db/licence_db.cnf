@@ -1,0 +1,108 @@
+# =============================================================================
+# licence_db.cnf — MariaDB 12.3 configuration for the k-licence-db container.
+#
+# Translation of the production MySQL 5.7.44 configuration of "kanclicense5"
+# (captured 2026-06-16 via SHOW VARIABLES). Only settings that differ from a
+# stock install, or that affect application behaviour (SQL mode, default
+# engine, character set, limits), are pinned here.
+#
+# Every directive was verified against the mariadb:12.3.3 image
+# (mariadbd --help --verbose and a live start with SHOW VARIABLES).
+# MySQL directives that do not exist in MariaDB are kept below as comments
+# for the record, each with its replacement or the reason there is none.
+#
+# Loaded via /etc/mysql/conf.d/ (read-only bind mount in docker-compose.yaml).
+# Changes apply after `task up` recreates the container. Settings that shape
+# the data directory (innodb_data_file_path, innodb_log_file_size) and the
+# character set of the database created by the entrypoint apply on first
+# initialisation of the volume.
+# =============================================================================
+
+[mysqld]
+
+# --- Networking / connections -------------------------------------------------
+bind-address                     = 0.0.0.0        # source: bind_address = *
+port                             = 3306
+back_log                         = 150            # 12.3 default: 80
+max_connections                  = 500            # 12.3 default: 151
+max_connect_errors               = 100
+max_allowed_packet               = 256M           # 12.3 default: 16M
+open_files_limit                 = 5000           # MariaDB raises this automatically if too low
+interactive_timeout              = 28800
+wait_timeout                     = 28800
+connect_timeout                  = 10
+
+# --- SQL mode & behaviour -----------------------------------------------------
+# 12.3 default adds ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,
+# NO_ENGINE_SUBSTITUTION; the source ran with STRICT_TRANS_TABLES only.
+sql_mode                         = "STRICT_TRANS_TABLES"
+explicit_defaults_for_timestamp  = OFF            # 12.3 default: ON
+lower_case_table_names           = 0
+local_infile                     = ON
+event_scheduler                  = OFF
+transaction-isolation            = REPEATABLE-READ
+
+# --- Storage engines ----------------------------------------------------------
+default_storage_engine           = MyISAM         # 12.3 default: InnoDB
+default_tmp_storage_engine       = InnoDB
+# MySQL only. MariaDB always uses Aria for on-disk internal temporary tables
+# (aria_used_for_temp_tables = ON, read-only); there is no engine switch.
+# internal_tmp_disk_storage_engine = InnoDB
+
+# --- Character set / collation ------------------------------------------------
+# 12.3 default is utf8mb4 / utf8mb4_uca1400_ai_ci. NOTE: the database created
+# by the container entrypoint (MARIADB_DATABASE) inherits this server default.
+character-set-server             = latin1
+collation-server                 = latin1_swedish_ci
+
+# --- InnoDB -------------------------------------------------------------------
+# Production runs 10G. 1G is the local development value; raise it on hosts
+# with enough RAM. Too large a value stops mariadbd from starting.
+innodb_buffer_pool_size          = 1G             # production: 10G
+# Removed in MariaDB 10.5: there is a single buffer pool by design.
+# innodb_buffer_pool_instances   = 8
+innodb_log_file_size             = 48M            # 12.3 default: 96M
+innodb_log_buffer_size           = 16M
+innodb_flush_log_at_trx_commit   = 1
+# ON by default and deprecated as an option in 12.3 (startup warning).
+# innodb_file_per_table          = ON
+innodb_strict_mode               = ON
+innodb_io_capacity               = 200
+innodb_data_file_path            = ibdata1:12M:autoextend
+
+# --- MyISAM / key cache -------------------------------------------------------
+key_buffer_size                  = 8M             # 12.3 default: 128M
+myisam_sort_buffer_size          = 8M
+
+# --- Per-session buffers ------------------------------------------------------
+sort_buffer_size                 = 256K           # 12.3 default: 2M
+read_buffer_size                 = 128K
+read_rnd_buffer_size             = 256K
+join_buffer_size                 = 256K
+bulk_insert_buffer_size          = 8M
+
+# --- Table / temp caches ------------------------------------------------------
+table_open_cache                 = 2000
+table_definition_cache           = 1400
+table_open_cache_instances       = 16             # 12.3 default: 8
+tmp_table_size                   = 16M
+max_heap_table_size              = 16M
+
+# --- Query cache (disabled, as on source) ------------------------------------
+# MariaDB turns the cache ON whenever query_cache_size is explicitly non-zero,
+# even with query_cache_type = 0 (verified). Both must be 0 to keep it off.
+# Source had query_cache_size = 1M.
+query_cache_type                 = 0
+query_cache_size                 = 0
+
+# --- Logging ------------------------------------------------------------------
+# log_error is not redirected so output stays visible via `docker logs`.
+# MySQL only; the MariaDB equivalent is log_warnings (default 2).
+# log_error_verbosity            = 3
+log_warnings                     = 3
+slow_query_log                   = OFF
+long_query_time                  = 10
+general_log                      = OFF
+# MySQL only. MariaDB logs in the system time zone; the container runs in UTC,
+# which matches the source. Do not set TZ on the container.
+# log_timestamps                 = UTC

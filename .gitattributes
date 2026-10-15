@@ -1,0 +1,6 @@
+* text=auto
+*.sh text eol=lf
+*.yaml text eol=lf
+*.cnf text eol=lf
+.env.example text eol=lf
+scripts/helpers/projects.list text eol=lf

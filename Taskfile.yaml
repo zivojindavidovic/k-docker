@@ -1,0 +1,9 @@
+version: '3'
+
+tasks:
+  projects-init:
+    desc: Prikazi listu projekata, kloniraj odabrane (HTTPS) pored k-docker i upisi lokalne domene u hosts
+    dir: '{{.TASKFILE_DIR}}'
+    interactive: true
+    cmds:
+      - bash scripts/projects-init.sh {{.CLI_ARGS}}
