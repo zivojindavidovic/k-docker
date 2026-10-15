@@ -7,3 +7,10 @@ tasks:
     interactive: true
     cmds:
       - bash scripts/projects-init.sh {{.CLI_ARGS}}
+
+  services:
+    desc: Izaberi koji servisi rade; oznaceni se podizu, odznaceni se zaustavljaju, a sa argumentima se samo podizu navedeni
+    dir: '{{.TASKFILE_DIR}}'
+    interactive: true
+    cmds:
+      - bash scripts/services.sh {{.CLI_ARGS}}

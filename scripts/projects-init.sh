@@ -2,6 +2,7 @@
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
+. scripts/helpers/menu.sh
 
 projects_file=scripts/helpers/projects.list
 projects_dir=$(cd .. && pwd)
@@ -12,6 +13,8 @@ project_names=()
 project_urls=()
 project_hosts=()
 project_notes=()
+menu_names=()
+menu_lines=()
 selected=()
 name_width=0
 host_width=0
@@ -61,79 +64,6 @@ print_projects() {
   for ((i = 0; i < ${#project_names[@]}; i++)); do
     project_line "$i"
     printf '\n'
-  done
-}
-
-restore_terminal() {
-  stty echo 2>/dev/null || true
-  printf '\e[?25h'
-}
-
-select_interactive() {
-  local count=${#project_names[@]} cursor=0 i key seq cols pointer mark line all
-  read -r _ cols < <(stty size 2>/dev/null) || cols=''
-  [[ $cols =~ ^[0-9]+$ && $cols -gt 20 ]] || cols=80
-  printf 'Dostupni projekti. Odrediste: %s\n' "$projects_dir"
-  printf 'Razmak: oznaci/ponisti, strelice ili j/k: kretanje, a: svi, Enter: potvrdi, q: odustani.\n\n'
-  trap restore_terminal EXIT
-  trap 'restore_terminal; printf "\n"; exit 130' INT TERM
-  stty -echo
-  printf '\e[?25l'
-  for ((i = 0; i < count; i++)); do printf '\n'; done
-  while :; do
-    printf '\e[%dA' "$count"
-    for ((i = 0; i < count; i++)); do
-      pointer=' '
-      mark=' '
-      if (( i == cursor )); then pointer='>'; fi
-      if (( selected[i] )); then mark='x'; fi
-      line="$pointer [$mark] $(project_line "$i")"
-      printf '\e[2K%s\n' "${line:0:cols-1}"
-    done
-    IFS= read -rsn1 key || key=q
-    case $key in
-      $'\e')
-        IFS= read -rsn2 -t 0.05 seq || seq=''
-        case $seq in
-          '[A' | 'OA') cursor=$(( (cursor + count - 1) % count )) ;;
-          '[B' | 'OB') cursor=$(( (cursor + 1) % count )) ;;
-        esac
-        ;;
-      k | K) cursor=$(( (cursor + count - 1) % count )) ;;
-      j | J) cursor=$(( (cursor + 1) % count )) ;;
-      ' ') selected[cursor]=$(( 1 - selected[cursor] )) ;;
-      a | A)
-        all=1
-        for ((i = 0; i < count; i++)); do (( selected[i] )) || { all=0; break; }; done
-        for ((i = 0; i < count; i++)); do selected[i]=$(( 1 - all )); done
-        ;;
-      '') break ;;
-      q | Q)
-        restore_terminal
-        printf '\nOdustali ste; nista nije klonirano.\n'
-        exit 0
-        ;;
-    esac
-  done
-  restore_terminal
-  trap - INT TERM
-  printf '\n'
-}
-
-select_from_args() {
-  local count=${#project_names[@]} joined="$*" arg i
-  local -a args
-  IFS=', ' read -ra args <<< "$joined"
-  for arg in "${args[@]}"; do
-    if [[ -z $arg ]]; then
-      continue
-    elif [[ $arg == all ]]; then
-      for ((i = 0; i < count; i++)); do selected[i]=1; done
-    elif [[ $arg =~ ^[0-9]+$ ]] && (( 10#$arg >= 1 && 10#$arg <= count )); then
-      selected[$(( 10#$arg - 1 ))]=1
-    else
-      fail "Nepoznat izbor '$arg'. Navedite brojeve 1-$count razdvojene razmakom ili all."
-    fi
   done
 }
 
@@ -234,12 +164,15 @@ configure_hosts() {
 }
 
 projects_init() {
+  local i
   command -v git >/dev/null 2>&1 || fail 'Git nije instaliran ili nije na PATH-u.'
   load_projects
+  menu_names=("${project_names[@]}")
+  for ((i = 0; i < ${#project_names[@]}; i++)); do menu_lines[i]=$(project_line "$i"); done
   if (( $# > 0 )); then
-    select_from_args "$@"
+    menu_select_from_args "$@" || exit 1
   elif [[ -t 0 && -t 1 ]]; then
-    select_interactive
+    menu_select_interactive "Dostupni projekti. Odrediste: $projects_dir" || { printf 'Odustali ste; nista nije klonirano.\n'; exit 0; }
   else
     print_projects
     fail 'Terminal nije interaktivan. Navedite brojeve: task projects-init -- 1 2, ili task projects-init -- all.'

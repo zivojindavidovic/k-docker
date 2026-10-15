@@ -1,24 +1,6 @@
 name: k-docker
 
 services:
-  k-licence-db:
-    image: mariadb:12.3.3
-    restart: unless-stopped
-    environment:
-      MARIADB_DATABASE: k_licence
-      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-    ports:
-      - "${K_LICENCE_DB_PORT:-3308}:3306"
-    volumes:
-      - k-licence-data:/var/lib/mysql
-      - ./containers/k-licence-db/licence_db.cnf:/etc/mysql/conf.d/licence_db.cnf:ro
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      start_period: 30s
-      interval: 5s
-      timeout: 5s
-      retries: 12
-
   k-local:
     image: nginx:1.30.6
     restart: unless-stopped
@@ -41,6 +23,16 @@ services:
       - k-master-db
       - k-redis
 
+  k-gateway:
+    build:
+      context: ./containers/k-gateway/image
+    restart: unless-stopped
+    ports:
+      - "${K_GATEWAY_PORT:-9090}:9090"
+    volumes:
+      - ${K_GATEWAY_PATH:-../k-gateway}:/app
+      - k-gateway-gradle:/home/app/.gradle
+
   k-master-db:
     build:
       context: ./containers/k-master-db/image
@@ -55,6 +47,24 @@ services:
     volumes:
       - k-master-db-data:/var/lib/postgresql
 
+  k-licence-db:
+    image: mariadb:12.3.3
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: k_licence
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "${K_LICENCE_DB_PORT:-3308}:3306"
+    volumes:
+      - k-licence-data:/var/lib/mysql
+      - ./containers/k-licence-db/licence_db.cnf:/etc/mysql/conf.d/licence_db.cnf:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   k-redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -68,3 +78,4 @@ volumes:
   k-licence-data:
   k-master-db-data:
   k-redis-data:
+  k-gateway-gradle:
