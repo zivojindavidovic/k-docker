@@ -1,9 +1,11 @@
 # k-docker
 
 Zajednički alat za postavljanje lokalnog razvojnog okruženja kompanijskih
-projekata. Trenutno sadrži jednu komandu, `task projects-init`, koja klonira
-odabrane projekte pored ovog repozitorijuma i upisuje njihove lokalne domene u
-hosts fajl.
+projekata. Sadrži komandu `task projects-init`, koja klonira odabrane projekte
+pored ovog repozitorijuma i upisuje njihove lokalne domene u hosts fajl, i
+`docker-compose.yaml` sa zajedničkim servisima: bazom za licence (`k-licence-db`),
+nginx reverse proxy-jem (`k-local`) koji lokalne domene vodi na aplikacije i
+kontejnerom aplikacije k-fakture (`k-fakture`).
 
 ## Preduslovi
 
@@ -65,6 +67,117 @@ posle `wsl --shutdown`. Ako upis ne uspe, komanda ispisuje redove koje treba
 ručno dodati: na Linux-u u `/etc/hosts` uz `sudo`, na Windows-u u navedeni fajl
 otvoren u Notepad-u pokrenutom kao administrator.
 
+## k-local (nginx)
+
+Servis `k-local` (nginx) iz `docker-compose.yaml` zamenjuje Apache instaliran na
+hostu. Prima zahteve na portu 80 i po domenu ih:
+
+- prosleđuje aplikacijama koje se vrte na hostu ili objavljuju HTTP port
+  (`proxy_pass`), ili
+- sam servira, kad je aplikacija PHP-FPM kontejner iz ovog compose fajla:
+  statičke fajlove čita iz koda projekta mount-ovanog read-only na
+  `/srv/<ime>`, a PHP izvršava preko FastCGI-ja (`fastcgi_pass`) na portu koji
+  kontejner objavljuje na `127.0.0.1`. Tako radi `k-fakture.local`.
+
+Kontejner radi sa `network_mode: host`, pa `127.0.0.1` u konfiguraciji znači
+loopback hosta.
+
+```bash
+docker compose up -d k-local
+```
+
+Pre pokretanja port 80 mora biti slobodan. Ako na hostu radi Apache, ugasite ga:
+
+```bash
+sudo systemctl disable --now apache2
+```
+
+Konfiguracija je u `containers/k-local/conf.d/`, jedan fajl po projektu.
+`00-default.conf` vraća 404 za domene koji nemaju svoj fajl. Novi PHP-FPM
+projekat se dodaje kopiranjem `k-fakture.conf` pod novim imenom, uz izmenu
+`server_name`, `root` i porta u `fastcgi_pass`, i dodavanjem mount-a koda na
+`/srv/<ime>` u servisu `k-local`. Aplikacija koja se vrti na hostu dobija samo
+proxy blok:
+
+```nginx
+server {
+    listen 80;
+    server_name k-gateway.local;
+    location / {
+        proxy_pass http://127.0.0.1:9090;
+        proxy_set_header Host $host;
+    }
+}
+```
+
+Posle izmene:
+
+```bash
+docker compose up -d k-local      # novi mount
+docker compose restart k-local    # samo izmena conf fajla
+```
+
+Logovi pristupa i grešaka idu u izlaz kontejnera: `docker compose logs -f k-local`.
+
+Na Windows-u `network_mode: host` radi sa Docker Engine-om instaliranim unutar
+WSL-a. Docker Desktop ga podržava tek uz opciju *Enable host networking* u
+podešavanjima (Resources > Network).
+
+## k-fakture
+
+Servis `k-fakture` je PHP-FPM kontejner aplikacije k-fakture, nastao iz `php`
+servisa u `docker-compose.yaml` tog projekta, s tim što umesto `php:8.5-apache`
+koristi `php:8.5-fpm`: web server je `k-local`, a kontejner samo izvršava PHP.
+Dockerfile (sa ugrađenim entrypoint-om) je u `containers/k-fakture/image/`,
+`php.ini` u `containers/k-fakture/`. Build kontekst je direktorijum projekta,
+pa važi njegov `.dockerignore`; isti direktorijum je bind mount na
+`/var/www/html`, pa se izmene vide odmah. Projekat mora biti kloniran pored
+`k-docker` (`task projects-init`), a ovaj repozitorijum pod imenom `k-docker`,
+jer Dockerfile putanja ide relativno od projekta. Ako je direktorijum projekta
+drugačije nazvan, putanju zadajte u `.env`:
+
+```text
+K_FAKTURE_PATH=../k-fakture-backend
+```
+
+```bash
+docker compose up -d --build k-fakture k-local
+docker compose exec k-fakture composer install
+docker compose exec k-fakture artisan migrate
+```
+
+Aplikacija je dostupna samo kroz `k-local`, na `http://k-fakture.local`.
+FastCGI port `K_FAKTURE_PORT` (podrazumevano 9082) nije HTTP, služi samo
+`k-local`-u. Ako port promenite, promenite ga i u
+`containers/k-local/conf.d/k-fakture.conf`. Entrypoint pri startu instalira
+node zavisnosti i pokreće `npm run build`, pa `k-local` servira izgrađene
+asset-e iz `public/build`. `php artisan storage:link` pokrećite sa
+`--relative`, jer apsolutni link na `/var/www/html/...` u `k-local` ne postoji.
+
+Baza i Redis su zajednički servisi za sve projekte: `k-master-db` (PostgreSQL
+18, Dockerfile sa healthcheck-om u `containers/k-master-db/image/`, prenet iz
+compose fajla projekta) i `k-redis`. U `.env` projekta zato stoji
+`DB_HOST=k-master-db` i `REDIS_HOST=k-redis`; početna baza, korisnik, lozinka
+i lokalni portovi zadaju se kroz `K_MASTER_DB_*` i `K_REDIS_PORT` u `.env`
+k-docker-a. Podaci su u volumenima `k-docker_k-master-db-data` i
+`k-docker_k-redis-data`.
+
+Gateway saobraćaj ka `https://kancelarko.local` ide kontejner-na-kontejner,
+pa radi tek kad i kancelarko bude servis u ovom compose fajlu (zajednička
+`default` mreža); do tada pozivi ka gateway-u iz kontejnera ne prolaze.
+
+`www-data` u kontejneru ima uid/gid 1000 (podrazumevano iz Dockerfile-a), da
+fajlovi nastali u kontejneru budu vaše vlasništvo; ako vaš uid nije 1000:
+
+```bash
+docker compose build --build-arg HOST_UID=$(id -u) --build-arg HOST_GID=$(id -g) k-fakture
+```
+
+Još nisu preneti servisi `queue`, `scheduler` i `vite`, pa se queue poslovi
+(izdavanje faktura) ne izvršavaju, a asset-i se grade jednom pri startu
+kontejnera umesto kroz HMR. Xdebug (ekstenzija i podešavanja u `php.ini`) je
+izostavljen i dodaje se kad zatreba.
+
 ## Rešavanje problema
 
 | Problem | Postupak |
@@ -73,6 +186,11 @@ otvoren u Notepad-u pokrenutom kao administrator.
 | Kloniranje projekta ne uspeva (`Authentication failed`, `repository not found`) | Proverite URL u `scripts/helpers/projects.list` i pristup repozitorijumu; za privatne repozitorijume koristite Personal Access Token umesto lozinke |
 | `task projects-init` javlja da terminal nije interaktivan | Pokrenite komandu iz običnog terminala ili zadajte brojeve: `task projects-init -- 1 2` |
 | Hosts unosi nisu dodati (sudo odbijen, UAC otkazan, `powershell.exe` nedostupan) | Dodajte ispisane redove ručno: Linux/WSL `sudo nano /etc/hosts`, Windows Notepad kao administrator nad `C:\Windows\System32\drivers\etc\hosts`; zatim ponovite `task projects-init` |
+| `k-local` kontejner odmah staje, u logu `bind() to 0.0.0.0:80 failed (98: Address already in use)` | Port 80 drži drugi proces, najčešće Apache: `sudo systemctl disable --now apache2`, zatim `docker compose up -d k-local` |
+| `docker compose build k-fakture` javlja da putanja `../k-fakture` ne postoji | Projekat nije kloniran pored `k-docker` ili je direktorijum drugačije nazvan; `task projects-init` ili `K_FAKTURE_PATH=...` u `.env` |
+| `k-fakture.local` vraća 502 Bad Gateway | `k-fakture` kontejner ne radi ili sluša na drugom portu: `docker compose ps`, `docker compose logs k-fakture`; `K_FAKTURE_PORT` u `.env` i `fastcgi_pass` u `containers/k-local/conf.d/k-fakture.conf` moraju biti isti |
+| `File not found.` u browseru, `Primary script unknown` u logu `k-local` | Kod projekta nije na očekivanim putanjama: `/srv/k-fakture` u `k-local` i `/var/www/html` u `k-fakture`; proverite `K_FAKTURE_PATH` i `docker compose up -d k-local` posle izmene mount-a |
+| Laravel javlja `getaddrinfo for redis failed` ili `Connection refused` ka bazi | U `.env` projekta mora biti `DB_HOST=k-master-db` i `REDIS_HOST=k-redis`; `docker compose ps` da su `k-master-db` i `k-redis` podignuti |
 | `k-gateway.local` radi u WSL-u, ali ne iz Windows browsera | Unos nedostaje u Windows hosts fajlu; ponovite `task projects-init` i potvrdite UAC prozor ili dodajte red ručno |
 
 ## Provere

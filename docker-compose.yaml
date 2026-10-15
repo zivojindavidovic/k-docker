@@ -19,5 +19,52 @@ services:
       timeout: 5s
       retries: 12
 
+  k-local:
+    image: nginx:1.30.6
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./containers/k-local/conf.d:/etc/nginx/conf.d:ro
+      - ${K_FAKTURE_PATH:-../k-fakture}:/srv/k-fakture:ro
+
+  k-fakture:
+    build:
+      context: ${K_FAKTURE_PATH:-../k-fakture}
+      dockerfile: ../k-docker/containers/k-fakture/image/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${K_FAKTURE_PORT:-9082}:9000"
+    volumes:
+      - ${K_FAKTURE_PATH:-../k-fakture}:/var/www/html
+      - ./containers/k-fakture/php.ini:/usr/local/etc/php/conf.d/zz-k-fakture.ini:ro
+    depends_on:
+      - k-master-db
+      - k-redis
+
+  k-master-db:
+    build:
+      context: ./containers/k-master-db/image
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${K_MASTER_DB_DATABASE:-invoice}
+      POSTGRES_USER: ${K_MASTER_DB_USERNAME:-root}
+      POSTGRES_PASSWORD: ${K_MASTER_DB_PASSWORD:-}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "${K_MASTER_DB_PORT:-5432}:5432"
+    volumes:
+      - k-master-db-data:/var/lib/postgresql
+
+  k-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${K_REDIS_PORT:-6379}:6379"
+    volumes:
+      - k-redis-data:/data
+
 volumes:
   k-licence-data:
+  k-master-db-data:
+  k-redis-data:
