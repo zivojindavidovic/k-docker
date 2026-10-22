@@ -1,0 +1,20 @@
+# =============================================================================
+# master_db.cnf — MariaDB 12.3 konfiguracija za k-master-db (office_master).
+#
+# Lokalni ekvivalent nekadasnjeg rokovnik/docker/mariadb (MariaDB 10.3).
+# Baza se pravi iz dump-a (scripts/db-seed.sh), koji sam postavlja charset
+# baze i tabela; ovde je samo podrazumevani charset servera i SQL mode.
+# =============================================================================
+
+[mysqld]
+character-set-server             = utf8mb4
+collation-server                 = utf8mb4_unicode_ci
+# Legacy kod (rokovnik, kadrovik) ne radi sa strogim modom MariaDB 12
+# (ONLY_FULL_GROUP_BY, NO_ZERO_DATE...), isto kao license baze.
+sql_mode                         = "STRICT_TRANS_TABLES"
+explicit_defaults_for_timestamp  = OFF
+max_allowed_packet               = 256M
+innodb_buffer_pool_size          = 256M
+
+[client]
+default-character-set            = utf8mb4

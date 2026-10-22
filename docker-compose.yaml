@@ -7,7 +7,63 @@ services:
     network_mode: host
     volumes:
       - ./containers/k-local/conf.d:/etc/nginx/conf.d:ro
+      - ./containers/k-local/tls:/etc/nginx/tls:ro
       - ${K_FAKTURE_PATH:-../k-fakture}:/srv/k-fakture:ro
+      - ${K_AUTH_PATH:-../kancelarko}:/srv/k-auth:ro
+
+  k-auth:
+    build:
+      context: ${K_AUTH_PATH:-../kancelarko}
+      dockerfile: ../k-docker/containers/k-auth/image/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${K_AUTH_PORT:-9083}:9000"
+    volumes:
+      - ${K_AUTH_PATH:-../kancelarko}:/var/www/html
+      - ./containers/k-auth/php.ini:/usr/local/etc/php/conf.d/zz-k-auth.ini:ro
+    # .env projekta je podesen za rad sa hosta (127.0.0.1 + objavljeni portovi);
+    # u kontejneru se koriste imena servisa, a DBHost iz licence radi bez mape.
+    environment:
+      DB_HOST: k-master-db
+      DB_PORT: "3306"
+      REDIS_HOST: k-redis
+      REDIS_PORT: "6379"
+      TENANT_DB_HOST_MAP: ""
+    depends_on:
+      k-master-db:
+        condition: service_healthy
+      k-license-1-db:
+        condition: service_healthy
+      k-license-2-db:
+        condition: service_healthy
+      k-redis:
+        condition: service_started
+
+  # Red poslova auth servisa (back-channel odjava ka modulima). Domeni *.local
+  # vode na nginx k-local na racunaru (host-gateway).
+  k-auth-worker:
+    build:
+      context: ${K_AUTH_PATH:-../kancelarko}
+      dockerfile: ../k-docker/containers/k-auth/image/Dockerfile
+    restart: unless-stopped
+    command: ["php", "artisan", "queue:work", "--sleep=1", "--max-time=3600"]
+    volumes:
+      - ${K_AUTH_PATH:-../kancelarko}:/var/www/html
+      - ./containers/k-auth/php.ini:/usr/local/etc/php/conf.d/zz-k-auth.ini:ro
+    environment:
+      DB_HOST: k-master-db
+      DB_PORT: "3306"
+      REDIS_HOST: k-redis
+      REDIS_PORT: "6379"
+      TENANT_DB_HOST_MAP: ""
+    extra_hosts:
+      - "k-fakture.local:host-gateway"
+      - "k-gateway.local:host-gateway"
+    depends_on:
+      k-auth:
+        condition: service_started
+      k-redis:
+        condition: service_started
 
   k-fakture:
     build:
@@ -20,7 +76,7 @@ services:
       - ${K_FAKTURE_PATH:-../k-fakture}:/var/www/html
       - ./containers/k-fakture/php.ini:/usr/local/etc/php/conf.d/zz-k-fakture.ini:ro
     depends_on:
-      - k-master-db
+      - k-invoice-db
       - k-redis
 
   k-gateway:
@@ -33,31 +89,69 @@ services:
       - ${K_GATEWAY_PATH:-../k-gateway}:/app
       - k-gateway-gradle:/home/app/.gradle
 
-  k-master-db:
+  # PostgreSQL za fakture (ranije se zvao k-master-db).
+  k-invoice-db:
     build:
-      context: ./containers/k-master-db/image
+      context: ./containers/k-invoice-db/image
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${K_MASTER_DB_DATABASE:-invoice}
-      POSTGRES_USER: ${K_MASTER_DB_USERNAME:-root}
-      POSTGRES_PASSWORD: ${K_MASTER_DB_PASSWORD:-}
+      POSTGRES_DB: ${K_INVOICE_DB_DATABASE:-invoice}
+      POSTGRES_USER: ${K_INVOICE_DB_USERNAME:-root}
+      POSTGRES_PASSWORD: ${K_INVOICE_DB_PASSWORD:-}
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "${K_MASTER_DB_PORT:-5432}:5432"
+      - "${K_INVOICE_DB_PORT:-5432}:5432"
     volumes:
-      - k-master-db-data:/var/lib/postgresql
+      - k-invoice-db-data:/var/lib/postgresql
 
-  k-licence-db:
+  # office_master (licence, korisnici po licenci, auth tabele, subjekti...).
+  k-master-db:
     image: mariadb:12.3.3
     restart: unless-stopped
     environment:
-      MARIADB_DATABASE: k_licence
+      MARIADB_DATABASE: office_master
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
     ports:
-      - "${K_LICENCE_DB_PORT:-3308}:3306"
+      - "${K_MASTER_DB_PORT:-3306}:3306"
     volumes:
-      - k-licence-data:/var/lib/mysql
-      - ./containers/k-licence-db/licence_db.cnf:/etc/mysql/conf.d/licence_db.cnf:ro
+      - k-office-master-db-data:/var/lib/mysql
+      - ./containers/k-master-db/master_db.cnf:/etc/mysql/conf.d/master_db.cnf:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Tenant (licence) baze. Dva servera, kao license_srvN u produkciji, da bi
+  # se testirao multi-license login i DBHost iz office_license.
+  k-license-1-db:
+    image: mariadb:12.3.3
+    restart: unless-stopped
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "${K_LICENSE_1_DB_PORT:-3308}:3306"
+    volumes:
+      - k-license-1-db-data:/var/lib/mysql
+      - ./containers/k-license-db/license_db.cnf:/etc/mysql/conf.d/license_db.cnf:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  k-license-2-db:
+    image: mariadb:12.3.3
+    restart: unless-stopped
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "${K_LICENSE_2_DB_PORT:-3309}:3306"
+    volumes:
+      - k-license-2-db-data:/var/lib/mysql
+      - ./containers/k-license-db/license_db.cnf:/etc/mysql/conf.d/license_db.cnf:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       start_period: 30s
@@ -68,14 +162,17 @@ services:
   k-redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    # noeviction: Redis ne sme sam da brise kljuceve (auth sesije, tokeni) kad mu ponestane memorije.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
     ports:
       - "${K_REDIS_PORT:-6379}:6379"
     volumes:
       - k-redis-data:/data
 
 volumes:
-  k-licence-data:
-  k-master-db-data:
+  k-invoice-db-data:
+  k-office-master-db-data:
+  k-license-1-db-data:
+  k-license-2-db-data:
   k-redis-data:
   k-gateway-gradle:

@@ -14,3 +14,15 @@ tasks:
     interactive: true
     cmds:
       - bash scripts/services.sh {{.CLI_ARGS}}
+
+  db-seed:
+    desc: Napuni office_master i license baze iz dump-ova (K_DB_DUMPS_PATH) i dodaj test korisnike; --force ponovo uvozi, --local samo test podaci
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - bash scripts/db-seed.sh {{.CLI_ARGS}}
+
+  tls-init:
+    desc: Lokalni HTTPS za *.local domene (mkcert sertifikat, nginx 443); bez ovoga radi samo HTTP
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - bash scripts/tls-init.sh
