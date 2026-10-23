@@ -67,7 +67,7 @@ Skripta radi isto na Linuxu i na Windows-u (WSL2):
 | Sertifikat | Za sve domene iz `scripts/helpers/projects.list`, u `containers/k-local/tls/` | Isto |
 | nginx | Restart `k-local`, sluša i na 443 | Isto; Windows browser dolazi preko WSL localhost prosleđivanja |
 
-Posle toga restartuj browser i otvori npr. `https://k-auth.local`. HTTP i
+Posle toga restartuj browser i otvori npr. `https://auth.kancelarko.local`. HTTP i
 dalje radi. Ponovi `task tls-init` kad dodaš novi projekat (novi domen ulazi u
 sertifikat). Sertifikati i privatni ključ se ne komituju (`.gitignore`), a CA
 (`mkcert -CAROOT`) ostaje samo na tvom računaru i ne deli se.
@@ -91,10 +91,19 @@ Authorities*.
 | `k-license-1-db` | MariaDB, server licenci 1 (`office_licenca`) | `localhost:3308` |
 | `k-license-2-db` | MariaDB, server licenci 2 (`office_licenca3`) | `localhost:3309` |
 | `k-redis` | Redis 7 | `localhost:6379` |
-| `k-auth` | auth servis (Laravel, repo `kancelarko`) | http://k-auth.local |
+| `k-auth` | auth servis (Laravel, repo `kancelarko`) | http://auth.kancelarko.local |
 | `k-auth-worker` | red poslova auth servisa (odjava ka modulima) | — |
-| `k-fakture` | k-fakture (Laravel) | http://k-fakture.local |
-| `k-gateway` | k-gateway (Kotlin, Spring Boot) | http://k-gateway.local |
+| `k-fakture` | k-fakture (Laravel, PHP-FPM); FastCGI samo na `127.0.0.1:9082` | http://fakture.kancelarko.local (preko gateway-a) |
+| `k-gateway` | k-gateway (Kotlin, Spring Boot): prijava (BFF), tokeni, ulaz za aplikacije | http://gateway.kancelarko.local; back-channel http://k-gateway.local |
+
+Aplikacije su iza gateway-a: `k-auth ◄── k-gateway ──► aplikacije`. k-auth zna samo za gateway
+(jedan klijent), aplikacije znaju samo za gateway. Browser ide na `fakture.kancelarko.local`,
+k-local ga šalje gateway-u, gateway (posle prijave na k-auth-u) prosleđuje zahtev sa
+`Authorization: Bearer` na interni vhost k-local-a (port 9180, samo iz Docker mreža), a on na k-fakture. Nova aplikacija: domen u `kancelarko-apps.conf` i
+`scripts/helpers/projects.list`, interni vhost na novom portu u k-local-u (kao u `k-fakture.conf`),
+ruta u `k-gateway` (`application.properties`).
+`http://k-fakture.local` preusmerava na novi domen. Posle promene domena ponovi `task tls-init`
+ako koristiš HTTPS (sertifikat se pravi za domene iz `projects.list`).
 
 Portovi, putanje projekata i pristupni podaci baze menjaju se u `.env`;
 sve opcije su u `.env.example`.

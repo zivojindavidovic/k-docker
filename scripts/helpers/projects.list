@@ -1,4 +1,4 @@
-k-gateway https://github.com/zivojindavidovic/k-gateway k-gateway.local
-k-fakture git@github.com:Ptichica/k-fakture-backend.git k-fakture.local
+k-gateway https://github.com/zivojindavidovic/k-gateway gateway.kancelarko.local
+k-fakture git@github.com:Ptichica/k-fakture-backend.git fakture.kancelarko.local
 # Auth servis: lokalni direktorijum je ../kancelarko. URL repozitorijuma jos nije odredjen.
-kancelarko TODO-repo-url k-auth.local
+kancelarko TODO-repo-url auth.kancelarko.local

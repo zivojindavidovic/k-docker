@@ -27,6 +27,10 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 
 WORKDIR /var/www/html
 
+# Paket kancelarko/gateway-client: composer path repozitorijum ../k-gateway-client
+# (additional_contexts u docker-compose.yaml).
+COPY --from=gateway-client . /var/www/k-gateway-client
+
 COPY . .
 
 RUN composer install --no-interaction --optimize-autoloader
