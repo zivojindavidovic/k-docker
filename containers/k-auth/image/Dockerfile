@@ -1,4 +1,4 @@
-# k-auth (auth servis, repo ~/www/kancelarko). Isto kao k-fakture, plus pdo_mysql
+# k-auth (auth servis, repo ../k-auth). Isto kao k-fakture, plus pdo_mysql
 # za office_master i license baze.
 FROM php:8.5-fpm
 

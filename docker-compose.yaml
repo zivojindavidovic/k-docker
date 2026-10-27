@@ -11,7 +11,7 @@ services:
       - ./containers/k-local/conf.d:/etc/nginx/conf.d:ro
       - ./containers/k-local/tls:/etc/nginx/tls:ro
       - ${K_FAKTURE_PATH:-../k-fakture}:/srv/k-fakture:ro
-      - ${K_AUTH_PATH:-../kancelarko}:/srv/k-auth:ro
+      - ${K_AUTH_PATH:-../k-auth}:/srv/k-auth:ro
     networks:
       default:
         aliases:
@@ -22,11 +22,11 @@ services:
 
   k-auth:
     build:
-      context: ${K_AUTH_PATH:-../kancelarko}
+      context: ${K_AUTH_PATH:-../k-auth}
       dockerfile: ../k-docker/containers/k-auth/image/Dockerfile
     restart: unless-stopped
     volumes:
-      - ${K_AUTH_PATH:-../kancelarko}:/var/www/html
+      - ${K_AUTH_PATH:-../k-auth}:/var/www/html
       - ./containers/k-auth/php.ini:/usr/local/etc/php/conf.d/zz-k-auth.ini:ro
     environment:
       APP_URL: ${K_AUTH_ISSUER:-https://auth.kancelarko.local}
@@ -50,12 +50,12 @@ services:
 
   k-auth-worker:
     build:
-      context: ${K_AUTH_PATH:-../kancelarko}
+      context: ${K_AUTH_PATH:-../k-auth}
       dockerfile: ../k-docker/containers/k-auth/image/Dockerfile
     restart: unless-stopped
     command: ["php", "artisan", "queue:work", "--sleep=1", "--max-time=3600"]
     volumes:
-      - ${K_AUTH_PATH:-../kancelarko}:/var/www/html
+      - ${K_AUTH_PATH:-../k-auth}:/var/www/html
       - ./containers/k-auth/php.ini:/usr/local/etc/php/conf.d/zz-k-auth.ini:ro
     environment:
       APP_URL: ${K_AUTH_ISSUER:-https://auth.kancelarko.local}
@@ -77,8 +77,6 @@ services:
     build:
       context: ${K_FAKTURE_PATH:-../k-fakture}
       dockerfile: ../k-docker/containers/k-fakture/image/Dockerfile
-      additional_contexts:
-        gateway-client: ${K_GATEWAY_CLIENT_PATH:-../k-gateway-client}
     restart: unless-stopped
     volumes:
       - ${K_FAKTURE_PATH:-../k-fakture}:/var/www/html

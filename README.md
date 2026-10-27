@@ -25,18 +25,16 @@ odznače) i projekte koje označiš. Već klonirani su označeni, imaju zelenu
 lampicu i ne kloniraju se ponovo. Ko nema SSH ključ, označi „Kloniraj preko
 HTTPS-a”.
 
-Baze za auth se pune iz dump-ova iz `rokovnik` projekta. Nisu u ovom repou jer
-imaju stvarne podatke:
+Baze za auth se pune iz dump-ova u `scripts/seed/`:
 
 ```bash
-cp <rokovnik>/docker/db/office-*-init*.sql scripts/seed/
 task db-init
 ```
 
 `k-auth` se podešava jednom:
 
 ```bash
-cp ../kancelarko/.env.example ../kancelarko/.env
+cp ../k-auth/.env.example ../k-auth/.env
 docker compose run --rm --no-deps k-auth composer install
 docker compose run --rm --no-deps k-auth artisan key:generate
 docker compose run --rm --no-deps k-auth artisan auth:keys-generate
@@ -44,7 +42,7 @@ docker compose run --rm --no-deps k-auth artisan auth:client-secret k-gateway
 ```
 
 `auth:keys-generate` ispiše `OAUTH_SIGNING_KID`, a `auth:client-secret` heš
-tajne. Oba idu u `../kancelarko/.env`. Samu tajnu upiši u
+tajne. Oba idu u `../k-auth/.env`. Samu tajnu upiši u
 `K_GATEWAY_CLIENT_SECRET` u `.env` ovog repoa.
 
 Na kraju:
@@ -59,12 +57,6 @@ https://auth.kancelarko.local. Prvi start `k-gateway`-a traje par minuta jer
 Gradle skida zavisnosti (`docker compose logs -f k-gateway`).
 
 ## k-fakture
-
-Build traži i `k-gateway-client` pored ostalih projekata:
-
-```bash
-git clone git@github.com:zivojindavidovic/k-gateway-client.git ../k-gateway-client
-```
 
 U `.env` projekta stavi `DB_HOST=k-invoice-db` i `REDIS_HOST=k-redis`. Ako je
 projekat u drugom folderu, promeni `K_FAKTURE_PATH` u `.env` ovog repoa. Zatim:
@@ -143,7 +135,18 @@ Svaki `task db-init` je ponovo oslobađa. 2FA se uključuje u
 1. Red `ime URL domen` u `scripts/helpers/projects.list`. Projekat se klonira u `K_<IME>_PATH` iz `.env`, inače u `../<ime>`.
 2. Servis u `docker-compose.yaml`, Dockerfile u `containers/<ime>/image/`.
 3. Vhost u `containers/k-local/conf.d/<ime>.conf`: za PHP-FPM kopiraj `k-fakture.conf`, za ostalo `k-redisinsight.conf`.
-4. `task services`
+4. Ako projektu treba `k-gateway-client`, dodaj ga u `composer.json` projekta:
+
+   ```json
+   "require": {
+       "kancelarko/gateway-client": "*@dev"
+   },
+   "repositories": [
+       { "type": "vcs", "url": "https://github.com/zivojindavidovic/k-gateway-client" }
+   ]
+   ```
+
+5. `task services`
 
 ## Kad nešto ne radi
 
