@@ -1,5 +1,5 @@
 # =============================================================================
-# licence_db.cnf — MariaDB 12.3 configuration for the k-licence-db container.
+# license_db.cnf — MariaDB 12.3 configuration for the k-license-N-db containers (k-license-1-db, k-license-2-db).
 #
 # Translation of the production MySQL 5.7.44 configuration of "kanclicense5"
 # (captured 2026-06-16 via SHOW VARIABLES). Only settings that differ from a

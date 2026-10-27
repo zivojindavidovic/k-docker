@@ -1,2 +1,3 @@
-k-gateway https://github.com/zivojindavidovic/k-gateway k-gateway.local
-k-fakture https://github.com/Ptichica/k-fakture-backend k-fakture.local
+k-auth git@github.com:aleksandarjockovicparagraf/kancelarko.git auth.kancelarko.local
+k-gateway git@github.com:zivojindavidovic/k-gateway.git gateway.kancelarko.local
+k-fakture git@github.com:Ptichica/k-fakture-backend.git fakture.kancelarko.local

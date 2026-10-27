@@ -4,23 +4,92 @@ services:
   k-local:
     image: nginx:1.30.6
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "80:80"
+      - "443:443"
     volumes:
       - ./containers/k-local/conf.d:/etc/nginx/conf.d:ro
+      - ./containers/k-local/tls:/etc/nginx/tls:ro
       - ${K_FAKTURE_PATH:-../k-fakture}:/srv/k-fakture:ro
+      - ${K_AUTH_PATH:-../kancelarko}:/srv/k-auth:ro
+    networks:
+      default:
+        aliases:
+          - auth.kancelarko.local
+          - gateway.kancelarko.local
+          - fakture.kancelarko.local
+          - redisinsight.kancelarko.local
+
+  k-auth:
+    build:
+      context: ${K_AUTH_PATH:-../kancelarko}
+      dockerfile: ../k-docker/containers/k-auth/image/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ${K_AUTH_PATH:-../kancelarko}:/var/www/html
+      - ./containers/k-auth/php.ini:/usr/local/etc/php/conf.d/zz-k-auth.ini:ro
+    environment:
+      APP_URL: ${K_AUTH_ISSUER:-https://auth.kancelarko.local}
+      DB_HOST: k-master-db
+      DB_PORT: "3306"
+      REDIS_HOST: k-redis
+      REDIS_PORT: "6379"
+      TENANT_DB_HOST_MAP: ""
+      OAUTH_CLIENT_K_GATEWAY_REDIRECT_URIS: ${K_GATEWAY_PUBLIC_URL:-https://gateway.kancelarko.local}/bff/login/oauth2/code/k-auth
+      OAUTH_CLIENT_K_GATEWAY_POST_LOGOUT_REDIRECT_URIS: ${K_GATEWAY_PUBLIC_URL:-https://gateway.kancelarko.local}/bff/logged-out
+      OAUTH_CLIENT_K_GATEWAY_BACKCHANNEL_LOGOUT_URI: http://k-gateway:9090/logout/connect/back-channel/k-auth
+    depends_on:
+      k-master-db:
+        condition: service_healthy
+      k-license-1-db:
+        condition: service_healthy
+      k-license-2-db:
+        condition: service_healthy
+      k-redis:
+        condition: service_started
+
+  k-auth-worker:
+    build:
+      context: ${K_AUTH_PATH:-../kancelarko}
+      dockerfile: ../k-docker/containers/k-auth/image/Dockerfile
+    restart: unless-stopped
+    command: ["php", "artisan", "queue:work", "--sleep=1", "--max-time=3600"]
+    volumes:
+      - ${K_AUTH_PATH:-../kancelarko}:/var/www/html
+      - ./containers/k-auth/php.ini:/usr/local/etc/php/conf.d/zz-k-auth.ini:ro
+    environment:
+      APP_URL: ${K_AUTH_ISSUER:-https://auth.kancelarko.local}
+      DB_HOST: k-master-db
+      DB_PORT: "3306"
+      REDIS_HOST: k-redis
+      REDIS_PORT: "6379"
+      TENANT_DB_HOST_MAP: ""
+      OAUTH_CLIENT_K_GATEWAY_REDIRECT_URIS: ${K_GATEWAY_PUBLIC_URL:-https://gateway.kancelarko.local}/bff/login/oauth2/code/k-auth
+      OAUTH_CLIENT_K_GATEWAY_POST_LOGOUT_REDIRECT_URIS: ${K_GATEWAY_PUBLIC_URL:-https://gateway.kancelarko.local}/bff/logged-out
+      OAUTH_CLIENT_K_GATEWAY_BACKCHANNEL_LOGOUT_URI: http://k-gateway:9090/logout/connect/back-channel/k-auth
+    depends_on:
+      k-auth:
+        condition: service_started
+      k-redis:
+        condition: service_started
 
   k-fakture:
     build:
       context: ${K_FAKTURE_PATH:-../k-fakture}
       dockerfile: ../k-docker/containers/k-fakture/image/Dockerfile
+      additional_contexts:
+        gateway-client: ${K_GATEWAY_CLIENT_PATH:-../k-gateway-client}
     restart: unless-stopped
-    ports:
-      - "${K_FAKTURE_PORT:-9082}:9000"
     volumes:
       - ${K_FAKTURE_PATH:-../k-fakture}:/var/www/html
       - ./containers/k-fakture/php.ini:/usr/local/etc/php/conf.d/zz-k-fakture.ini:ro
+    environment:
+      APP_URL: https://fakture.kancelarko.local
+      GATEWAY_JWKS_URL: http://k-gateway:9090/.well-known/jwks.json
+      GATEWAY_ISSUER: ${K_AUTH_ISSUER:-https://auth.kancelarko.local}
+      GATEWAY_INTERNAL_URL: http://k-gateway:9090
     depends_on:
-      - k-master-db
+      - k-invoice-db
       - k-redis
 
   k-gateway:
@@ -32,32 +101,79 @@ services:
     volumes:
       - ${K_GATEWAY_PATH:-../k-gateway}:/app
       - k-gateway-gradle:/home/app/.gradle
+      - ./containers/k-local/tls:/certificates:ro
+    environment:
+      - USE_SYSTEM_CA_CERTS=1
+      - REDIS_HOST=k-redis
+      - K_GATEWAY_CLIENT_SECRET=${K_GATEWAY_CLIENT_SECRET?postavi K_GATEWAY_CLIENT_SECRET u .env}
+      - K_AUTH_ISSUER=${K_AUTH_ISSUER:-https://auth.kancelarko.local}
+      - K_GATEWAY_PUBLIC_URL=${K_GATEWAY_PUBLIC_URL:-https://gateway.kancelarko.local}
+      - K_GATEWAY_HOME_URL=https://fakture.kancelarko.local/
+      - K_GATEWAY_COOKIE_SECURE=true
+      - K_FAKTURE_URI=http://k-local:9180
+      - SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_TRUSTEDPROXIES=(10|172|192\.168)\..*
+    depends_on:
+      - k-redis
 
-  k-master-db:
+  k-invoice-db:
     build:
-      context: ./containers/k-master-db/image
+      context: ./containers/k-invoice-db/image
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${K_MASTER_DB_DATABASE:-invoice}
-      POSTGRES_USER: ${K_MASTER_DB_USERNAME:-root}
-      POSTGRES_PASSWORD: ${K_MASTER_DB_PASSWORD:-}
+      POSTGRES_DB: ${K_INVOICE_DB_DATABASE:-invoice}
+      POSTGRES_USER: ${K_INVOICE_DB_USERNAME:-root}
+      POSTGRES_PASSWORD: ${K_INVOICE_DB_PASSWORD:-}
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "${K_MASTER_DB_PORT:-5432}:5432"
+      - "${K_INVOICE_DB_PORT:-5432}:5432"
     volumes:
-      - k-master-db-data:/var/lib/postgresql
+      - k-invoice-db-data:/var/lib/postgresql
 
-  k-licence-db:
+  k-master-db:
     image: mariadb:12.3.3
     restart: unless-stopped
     environment:
-      MARIADB_DATABASE: k_licence
+      MARIADB_DATABASE: office_master
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
     ports:
-      - "${K_LICENCE_DB_PORT:-3308}:3306"
+      - "${K_MASTER_DB_PORT:-3306}:3306"
     volumes:
-      - k-licence-data:/var/lib/mysql
-      - ./containers/k-licence-db/licence_db.cnf:/etc/mysql/conf.d/licence_db.cnf:ro
+      - k-master-db-data:/var/lib/mysql
+      - ./containers/k-master-db/master_db.cnf:/etc/mysql/conf.d/master_db.cnf:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  k-license-1-db:
+    image: mariadb:12.3.3
+    restart: unless-stopped
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "${K_LICENSE_1_DB_PORT:-3308}:3306"
+    volumes:
+      - k-license-1-db-data:/var/lib/mysql
+      - ./containers/k-license-db/license_db.cnf:/etc/mysql/conf.d/license_db.cnf:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  k-license-2-db:
+    image: mariadb:12.3.3
+    restart: unless-stopped
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "${K_LICENSE_2_DB_PORT:-3309}:3306"
+    volumes:
+      - k-license-2-db-data:/var/lib/mysql
+      - ./containers/k-license-db/license_db.cnf:/etc/mysql/conf.d/license_db.cnf:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       start_period: 30s
@@ -68,14 +184,29 @@ services:
   k-redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
     ports:
       - "${K_REDIS_PORT:-6379}:6379"
     volumes:
       - k-redis-data:/data
 
+  k-redisinsight:
+    image: redis/redisinsight:3.8.0
+    restart: unless-stopped
+    environment:
+      RI_ACCEPT_TERMS_AND_CONDITIONS: "true"
+      RI_REDIS_HOST: k-redis
+      RI_REDIS_ALIAS: k-redis
+    volumes:
+      - k-redisinsight-data:/data
+    depends_on:
+      - k-redis
+
 volumes:
-  k-licence-data:
+  k-invoice-db-data:
   k-master-db-data:
+  k-license-1-db-data:
+  k-license-2-db-data:
   k-redis-data:
+  k-redisinsight-data:
   k-gateway-gradle:
