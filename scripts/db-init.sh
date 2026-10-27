@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Puni lokalne MariaDB baze za auth:
-#   k-master-db    <- office-master-init.sql            + scripts/seed/master-local.sql
-#   k-license-1-db <- office-licence-init-*.sql (office_licenca)  + scripts/seed/tenant-local.sql
-#   k-license-2-db <- office-licence-init-*.sql (office_licenca3) + scripts/seed/tenant-local.sql
+#   k-master-db    <- office-master-init.sql            + master-local.sql
+#   k-license-1-db <- office-licence-init-*.sql (office_licenca)  + tenant-local.sql
+#   k-license-2-db <- office-licence-init-*.sql (office_licenca3) + tenant-local.sql
 #   k-license-2-db <- office-licence-init-*.sql (office_licenca4): prazna baza slobodne licence 4
 #                     (proba registracije); pravi se ispocetka pri svakom pokretanju
 #
-# Dump-ovi nisu u repou; direktorijum je K_DB_DUMPS_PATH iz .env
-# (podrazumevano ../rokovnik/docker/db).
+# Svi fajlovi su u scripts/seed/. Dump-ovi (office-*-init*.sql) nisu u Git-u jer
+# imaju stvarne podatke; kopiraju se iz rokovnik/docker/db.
 #
 #   task db-init               # samo prazne baze (bezbedno)
 #   task db-init -- --force    # brise i ponovo pravi office_master i obe licence
@@ -21,11 +21,6 @@ fail() {
   exit 1
 }
 
-env_value() {
-  [[ -f .env ]] || return 0
-  sed -n "s/^$1=//p" .env | tail -n 1
-}
-
 force=0
 local_only=0
 for arg in "$@"; do
@@ -36,8 +31,7 @@ for arg in "$@"; do
   esac
 done
 
-dumps=$(env_value K_DB_DUMPS_PATH)
-dumps=${dumps:-../rokovnik/docker/db}
+dumps=scripts/seed
 master_dump=$dumps/office-master-init.sql
 license_dump=$(ls -1 "$dumps"/office-licence-init-*.sql 2>/dev/null | sort | tail -n 1 || true)
 
@@ -74,8 +68,8 @@ printf 'Podizem k-master-db, k-license-1-db, k-license-2-db...\n'
 docker compose up -d --wait k-master-db k-license-1-db k-license-2-db >/dev/null
 
 if (( ! local_only )); then
-  [[ -f $master_dump ]] || fail "Nema $master_dump (K_DB_DUMPS_PATH u .env)."
-  [[ -n $license_dump ]] || fail "Nema office-licence-init-*.sql u $dumps (K_DB_DUMPS_PATH u .env)."
+  [[ -f $master_dump ]] || fail "Nema $master_dump; kopiraj ga iz rokovnik/docker/db."
+  [[ -n $license_dump ]] || fail "Nema office-licence-init-*.sql u $dumps; kopiraj ga iz rokovnik/docker/db."
 
   if (( $(table_count k-master-db office_master) > 0 )) && (( ! force )); then
     printf 'office_master vec ima tabele, preskacem uvoz (--force za ponovni uvoz).\n'

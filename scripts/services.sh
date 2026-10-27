@@ -249,6 +249,9 @@ apply_selection() {
     printf 'Odabrani servisi vec rade; primenjujem eventualne izmene konfiguracije.\n'
   fi
   if contains k-local "${up[@]}"; then prepare_local_domains; fi
+  if contains k-gateway "${up[@]}" && ! grep -q '^K_GATEWAY_CLIENT_SECRET=.' .env 2>/dev/null; then
+    printf '%sUpozorenje:%s K_GATEWAY_CLIENT_SECRET u .env je prazan; prijava preko gateway-a nece raditi.\n' "$c_yellow" "$c_reset"
+  fi
   if (( ${#up[@]} > 0 )); then
     if (( exact )); then
       docker compose up -d --no-deps "${up[@]}"

@@ -105,7 +105,7 @@ services:
     environment:
       - USE_SYSTEM_CA_CERTS=1
       - REDIS_HOST=k-redis
-      - K_GATEWAY_CLIENT_SECRET=${K_GATEWAY_CLIENT_SECRET:?postavi K_GATEWAY_CLIENT_SECRET u .env}
+      - K_GATEWAY_CLIENT_SECRET=${K_GATEWAY_CLIENT_SECRET?postavi K_GATEWAY_CLIENT_SECRET u .env}
       - K_AUTH_ISSUER=${K_AUTH_ISSUER:-https://auth.kancelarko.local}
       - K_GATEWAY_PUBLIC_URL=${K_GATEWAY_PUBLIC_URL:-https://gateway.kancelarko.local}
       - K_GATEWAY_HOME_URL=https://fakture.kancelarko.local/

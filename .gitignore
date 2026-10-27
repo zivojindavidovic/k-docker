@@ -5,3 +5,6 @@
 # Lokalni TLS (task tls): sertifikati i nginx snippet se prave na svakom racunaru.
 containers/k-local/tls/*
 !containers/k-local/tls/.gitkeep
+
+# Dump-ovi baza (task db-init) imaju stvarne podatke i ne idu u javni repo.
+scripts/seed/office-*-init*.sql

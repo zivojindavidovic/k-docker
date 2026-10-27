@@ -23,7 +23,7 @@ tasks:
       - bash scripts/hosts.sh
 
   db-init:
-    desc: Napuni office_master i license baze iz dump-ova (K_DB_DUMPS_PATH) i dodaj test korisnike; --force ponovo uvozi, --local samo test podaci
+    desc: Napuni office_master i license baze iz dump-ova u scripts/seed i dodaj test korisnike; --force ponovo uvozi, --local samo test podaci
     dir: '{{.TASKFILE_DIR}}'
     cmds:
       - bash scripts/db-init.sh {{.CLI_ARGS}}
