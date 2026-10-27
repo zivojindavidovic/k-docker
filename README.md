@@ -20,9 +20,10 @@ cp .env.example .env
 task projects
 ```
 
-`task projects` klonira `k-auth` i `k-gateway` (obavezni su) i projekte koje
-označiš. Već klonirani imaju zelenu lampicu. Ko nema SSH ključ, označi
-„Kloniraj preko HTTPS-a”.
+`task projects` klonira `k-auth` i `k-gateway` (obavezni su, ne mogu da se
+odznače) i projekte koje označiš. Već klonirani su označeni, imaju zelenu
+lampicu i ne kloniraju se ponovo. Ko nema SSH ključ, označi „Kloniraj preko
+HTTPS-a”.
 
 Baze za auth se pune iz dump-ova iz `rokovnik` projekta. Nisu u ovom repou jer
 imaju stvarne podatke:

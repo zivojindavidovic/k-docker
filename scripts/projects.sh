@@ -99,7 +99,10 @@ load_projects() {
     clone_errors[i]=''
     menu_locked[i]=0
     selected[i]=0
-    if [[ ${project_states[i]} != missing ]]; then
+    if [[ ${project_states[i]} == cloned ]]; then
+      menu_locked[i]=1
+      selected[i]=1
+    elif [[ ${project_states[i]} == occupied ]]; then
       menu_locked[i]=1
     elif contains "${project_names[i]}" "${required_projects[@]}"; then
       menu_locked[i]=1
@@ -241,15 +244,10 @@ clone_selected() {
   local i name
   local -a todo=()
   for ((i = 0; i < ${#project_names[@]}; i++)); do
-    (( selected[i] )) || continue
-    if [[ ${project_states[i]} == missing ]]; then
-      todo+=("$i")
-    else
-      printf '%s: vec postoji u %s, preskacem.\n' "${project_names[i]}" "${project_dirs[i]}"
-    fi
+    if (( selected[i] )) && [[ ${project_states[i]} == missing ]]; then todo+=("$i"); fi
   done
   if (( ${#todo[@]} == 0 )); then
-    printf 'Nema projekata za kloniranje.\n'
+    printf 'Nema novih projekata za kloniranje.\n'
     return
   fi
   clone_log=$(mktemp)
