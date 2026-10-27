@@ -9,9 +9,9 @@
 # Dump-ovi nisu u repou; direktorijum je K_DB_DUMPS_PATH iz .env
 # (podrazumevano ../rokovnik/docker/db).
 #
-#   task db-seed               # samo prazne baze (bezbedno)
-#   task db-seed -- --force    # brise i ponovo pravi office_master i obe licence
-#   task db-seed -- --local    # samo test korisnici/licence (seed/*.sql), bez dump-ova
+#   task db-init               # samo prazne baze (bezbedno)
+#   task db-init -- --force    # brise i ponovo pravi office_master i obe licence
+#   task db-init -- --local    # samo test korisnici/licence (seed/*.sql), bez dump-ova
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
@@ -43,8 +43,8 @@ license_dump=$(ls -1 "$dumps"/office-licence-init-*.sql 2>/dev/null | sort | tai
 
 # servis | baza | ID licence u office_license | naziv firme
 tenants=(
-  "k-license-1-db|office_licenca|1|Firma Licenca 1"
-  "k-license-2-db|office_licenca3|3|Firma Licenca 3"
+  "k-license-1-db|office_licenca|1|Paragraf Licenca 1"
+  "k-license-2-db|office_licenca3|3|Paragraf Licenca 3"
 )
 
 # Dump-ovi su iz MySQL 5.7; MariaDB 12 odbija nekoliko konstrukcija koje 5.7
@@ -118,4 +118,4 @@ done
 printf '\nGotovo. Licence:\n'
 sql k-master-db -t -e 'SELECT ID, appCode, RegistrationDate, DBHost, DataBaseName, login_2fa FROM office_master.office_license ORDER BY ID'
 printf 'Test korisnici (lozinka: password):\n'
-sql k-master-db -t -e "SELECT userName, GROUP_CONCAT(licenseID ORDER BY licenseID) AS licence FROM office_master.office_users WHERE userName LIKE '%@k-auth.local' GROUP BY userName"
+sql k-master-db -t -e "SELECT userName, GROUP_CONCAT(licenseID ORDER BY licenseID) AS licence FROM office_master.office_users WHERE userName LIKE 'developer-%@paragraf.rs' GROUP BY userName"

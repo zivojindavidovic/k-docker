@@ -2,7 +2,7 @@
 # master_db.cnf — MariaDB 12.3 konfiguracija za k-master-db (office_master).
 #
 # Lokalni ekvivalent nekadasnjeg rokovnik/docker/mariadb (MariaDB 10.3).
-# Baza se pravi iz dump-a (scripts/db-seed.sh), koji sam postavlja charset
+# Baza se pravi iz dump-a (scripts/db-init.sh), koji sam postavlja charset
 # baze i tabela; ovde je samo podrazumevani charset servera i SQL mode.
 # =============================================================================
 

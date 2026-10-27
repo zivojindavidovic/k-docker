@@ -1,4 +1,4 @@
--- Lokalne izmene office_master posle uvoza dump-a (scripts/db-seed.sh).
+-- Lokalne izmene office_master posle uvoza dump-a (scripts/db-init.sh).
 -- Idempotentno: moze da se pusti vise puta.
 USE `office_master`;
 
@@ -13,35 +13,32 @@ UPDATE `office_license`
  WHERE `ID` = 3;
 
 -- Test korisnici (lozinke su u tenant bazama, vidi tenant-local.sql; svima je 'password'):
---   multi@k-auth.local           licence 1 i 3, ista lozinka        -> izbor licence
---   multi.razlicita@k-auth.local licence 1 i 3, razlicite lozinke   -> automatski licenca 1
---   single@k-auth.local          samo licenca 1                     -> prijava bez izbora
---   siva@k-auth.local            licenca 1 + licenca 3 (arhiviran)  -> izbor: 1 prohodna, 3 siva
---   suspendovan@k-auth.local     licenca 1, suspendovan 7 dana      -> odbijen (user_suspended)
---   neaktivan@k-auth.local       licenca 1, userAcitve = 0          -> odbijen (account_inactive)
---   nepotvrdjen@k-auth.local     licenca 1, email nije potvrdjen    -> odbijen (email_not_verified)
---   uslovi@k-auth.local          licenca 1, uslovi nisu prihvaceni  -> prijava + accept_terms
-DELETE FROM `office_users`
- WHERE `userName` IN ('multi@k-auth.local', 'multi.razlicita@k-auth.local', 'single@k-auth.local',
-                     'siva@k-auth.local', 'suspendovan@k-auth.local', 'neaktivan@k-auth.local',
-                     'nepotvrdjen@k-auth.local', 'uslovi@k-auth.local');
+--   developer-1@paragraf.rs  licence 1 i 3, ista lozinka        -> izbor licence
+--   developer-2@paragraf.rs  licence 1 i 3, razlicite lozinke   -> automatski licenca 1
+--   developer-3@paragraf.rs  samo licenca 1                     -> prijava bez izbora
+--   developer-4@paragraf.rs  licenca 1 + licenca 3 (arhiviran)  -> izbor: 1 prohodna, 3 siva
+--   developer-5@paragraf.rs  licenca 1, suspendovan 7 dana      -> odbijen (user_suspended)
+--   developer-6@paragraf.rs  licenca 1, userAcitve = 0          -> odbijen (account_inactive)
+--   developer-7@paragraf.rs  licenca 1, email nije potvrdjen    -> odbijen (email_not_verified)
+--   developer-8@paragraf.rs  licenca 1, uslovi nisu prihvaceni  -> prijava + accept_terms
+DELETE FROM `office_users` WHERE `userName` LIKE 'developer-%@paragraf.rs';
 
 INSERT INTO `office_users` (`licenseID`, `userName`, `userAcitve`, `emailVerificationCode`, `lastUpdateTime`) VALUES
-  (1, 'multi@k-auth.local', 1, NULL, NOW()),
-  (3, 'multi@k-auth.local', 1, NULL, NOW()),
-  (1, 'multi.razlicita@k-auth.local', 1, NULL, NOW()),
-  (3, 'multi.razlicita@k-auth.local', 1, NULL, NOW()),
-  (1, 'single@k-auth.local', 1, NULL, NOW()),
-  (1, 'siva@k-auth.local', 1, NULL, NOW()),
-  (3, 'siva@k-auth.local', 1, NULL, NOW()),
-  (1, 'suspendovan@k-auth.local', 1, NULL, NOW()),
-  (1, 'neaktivan@k-auth.local', 0, NULL, NOW()),
-  (1, 'nepotvrdjen@k-auth.local', 1, 'lokalni-kod-za-potvrdu', NOW()),
-  (1, 'uslovi@k-auth.local', 1, NULL, NOW());
+  (1, 'developer-1@paragraf.rs', 1, NULL, NOW()),
+  (3, 'developer-1@paragraf.rs', 1, NULL, NOW()),
+  (1, 'developer-2@paragraf.rs', 1, NULL, NOW()),
+  (3, 'developer-2@paragraf.rs', 1, NULL, NOW()),
+  (1, 'developer-3@paragraf.rs', 1, NULL, NOW()),
+  (1, 'developer-4@paragraf.rs', 1, NULL, NOW()),
+  (3, 'developer-4@paragraf.rs', 1, NULL, NOW()),
+  (1, 'developer-5@paragraf.rs', 1, NULL, NOW()),
+  (1, 'developer-6@paragraf.rs', 0, NULL, NOW()),
+  (1, 'developer-7@paragraf.rs', 1, 'lokalni-kod-za-potvrdu', NOW()),
+  (1, 'developer-8@paragraf.rs', 1, NULL, NOW());
 
 -- Slobodna licenca za probu registracije: ID 4, RegistrationDate = NULL.
 --   appCode KAUT-TEST-REGI-0004 -> k-license-2-db / office_licenca4 (prazna baza iz sablona)
--- Ponovni `task db-seed` je vraca u slobodno stanje (brise i probnu registraciju).
+-- Ponovni `task db-init` je vraca u slobodno stanje (brise i probnu registraciju).
 DELETE FROM `office_users` WHERE `licenseID` = 4;
 
 INSERT INTO `office_license`

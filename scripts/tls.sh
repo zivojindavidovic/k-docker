@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
 # Lokalni HTTPS za *.local domene (nginx k-local, port 443) — Linux i Windows (WSL2).
 #
-#   task tls-init
+#   task tls
 #
 # 1. mkcert: koristi postojeci ili ga preuzima u ~/.local/bin (bez sudo).
 # 2. Linux: libnss3-tools (certutil), da Chrome/Firefox veruju CA-u.
 # 3. Lokalni razvojni CA (mkcert -install, jednom po racunaru).
 # 4. WSL: isti CA i u Windows skladiste korisnika (Chrome/Edge na Windows-u).
-# 5. Sertifikat za sve domene iz scripts/helpers/projects.list + nginx snippet
-#    containers/k-local/tls/listen-443.conf, pa restart k-local.
+# 5. Sertifikat za sve server_name domene iz containers/k-local/conf.d, nginx
+#    snippet containers/k-local/tls/listen-443.conf (443 + preusmerenje sa HTTP-a)
+#    i kopija CA-a (tls/rootCA.crt) kojoj veruje k-gateway; pa reload k-local.
 #
-# Bez ovog koraka nginx radi samo na portu 80 (snippet ne postoji).
-# Bezbedno je pokretati vise puta (npr. posle dodavanja projekta u projects.list).
+# Bez ovog koraka nginx radi samo na portu 80 (snippet ne postoji). task services
+# ga pokrece sam kad sertifikat nedostaje ili ne pokriva sve domene.
+# Bezbedno je pokretati vise puta (npr. posle dodavanja novog vhost-a).
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
+. scripts/helpers/domains.sh
 
-tls_dir=containers/k-local/tls
-projects_file=scripts/helpers/projects.list
 local_bin=$HOME/.local/bin
 
 fail() {
@@ -66,7 +67,7 @@ ensure_nss_tools() {
     sudo apt-get install -y libnss3-tools >/dev/null && return
   fi
 
-  warn 'nema certutil-a (paket libnss3-tools); Chrome/Firefox na Linuxu nece verovati sertifikatu dok ga ne instaliras i ponovis task tls-init.'
+  warn 'nema certutil-a (paket libnss3-tools); Chrome/Firefox na Linuxu nece verovati sertifikatu dok ga ne instaliras i ponovis task tls.'
 }
 
 # Uvoz CA u Windows skladiste trenutnog korisnika (Cert:\CurrentUser\Root).
@@ -98,7 +99,7 @@ install_ca_windows() {
   if ! powershell.exe -NoProfile -Command \
     "\$ErrorActionPreference = 'Stop'; try { Import-Certificate -FilePath '$win_ca' -CertStoreLocation Cert:\\CurrentUser\\Root | Out-Null } finally { Remove-Item -ErrorAction SilentlyContinue '$win_ca' }" \
     >/dev/null; then
-    warn 'uvoz CA u Windows nije uspeo (ili je odbijen); ponovi task tls-init ili ga uvezi rucno (README, odeljak HTTPS).'
+    warn 'uvoz CA u Windows nije uspeo (ili je odbijen); ponovi task tls ili ga uvezi rucno (README, odeljak HTTPS).'
     return 1
   fi
 
@@ -107,8 +108,8 @@ install_ca_windows() {
 
 ensure_mkcert
 
-mapfile -t domains < <(awk '!/^[[:space:]]*#/ && NF >= 3 { print $3 }' "$projects_file" | sort -u)
-(( ${#domains[@]} > 0 )) || fail "nema domena u $projects_file."
+mapfile -t domains < <(local_domains)
+(( ${#domains[@]} > 0 )) || fail 'nema server_name domena u containers/k-local/conf.d.'
 
 is_wsl || ensure_nss_tools
 
@@ -122,18 +123,24 @@ fi
 printf 'Pravim sertifikat za: %s\n' "${domains[*]}"
 mkdir -p "$tls_dir"
 mkcert -cert-file "$tls_dir/local.pem" -key-file "$tls_dir/local-key.pem" "${domains[@]}" >/dev/null 2>&1
-chmod 644 "$tls_dir/local.pem" "$tls_dir/local-key.pem"
+cp "$(mkcert -CAROOT)/rootCA.pem" "$tls_dir/rootCA.crt"
+chmod 644 "$tls_dir/local.pem" "$tls_dir/local-key.pem" "$tls_dir/rootCA.crt"
 
 cat > "$tls_dir/listen-443.conf" <<'CONF'
-# Generisao scripts/tls-init.sh — ne menjati rucno.
+# Generisao scripts/tls.sh — ne menjati rucno.
 listen 443 ssl;
 ssl_certificate     /etc/nginx/tls/local.pem;
 ssl_certificate_key /etc/nginx/tls/local-key.pem;
+if ($scheme = http) {
+    return 301 https://$host$request_uri;
+}
 CONF
 
-printf 'Restartujem k-local...\n'
-docker compose up -d --force-recreate k-local >/dev/null
-docker compose exec -T k-local nginx -t >/dev/null 2>&1 || fail 'nginx konfiguracija nije ispravna (docker compose logs k-local).'
+if [[ -n $(docker compose ps -q --status running k-local 2>/dev/null) ]]; then
+  printf 'Ucitavam novi sertifikat u k-local...\n'
+  docker compose exec -T k-local nginx -t >/dev/null 2>&1 || fail 'nginx konfiguracija nije ispravna (docker compose exec k-local nginx -t).'
+  docker compose exec -T k-local nginx -s reload >/dev/null
+fi
 
 printf '\nGotovo. HTTPS radi za:\n'
 printf '  https://%s\n' "${domains[@]}"

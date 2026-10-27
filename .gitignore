@@ -2,6 +2,6 @@
 .env.*
 !.env.example
 
-# Lokalni TLS (task tls-init): sertifikati i nginx snippet se prave na svakom racunaru.
+# Lokalni TLS (task tls): sertifikati i nginx snippet se prave na svakom racunaru.
 containers/k-local/tls/*
 !containers/k-local/tls/.gitkeep

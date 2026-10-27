@@ -1,12 +1,12 @@
 version: '3'
 
 tasks:
-  projects-init:
-    desc: Prikazi listu projekata, kloniraj odabrane (HTTPS) pored k-docker i upisi lokalne domene u hosts
+  projects:
+    desc: Prikazi projekte i da li su klonirani, kloniraj odabrane (k-auth i k-gateway su obavezni) i upisi lokalne domene u hosts
     dir: '{{.TASKFILE_DIR}}'
     interactive: true
     cmds:
-      - bash scripts/projects-init.sh {{.CLI_ARGS}}
+      - bash scripts/projects.sh {{.CLI_ARGS}}
 
   services:
     desc: Izaberi koji servisi rade; oznaceni se podizu, odznaceni se zaustavljaju, a sa argumentima se samo podizu navedeni
@@ -15,14 +15,22 @@ tasks:
     cmds:
       - bash scripts/services.sh {{.CLI_ARGS}}
 
-  db-seed:
+  hosts:
+    desc: Upisi sve lokalne domene (server_name iz containers/k-local/conf.d) u /etc/hosts, a na WSL-u i u Windows hosts
+    dir: '{{.TASKFILE_DIR}}'
+    interactive: true
+    cmds:
+      - bash scripts/hosts.sh
+
+  db-init:
     desc: Napuni office_master i license baze iz dump-ova (K_DB_DUMPS_PATH) i dodaj test korisnike; --force ponovo uvozi, --local samo test podaci
     dir: '{{.TASKFILE_DIR}}'
     cmds:
-      - bash scripts/db-seed.sh {{.CLI_ARGS}}
+      - bash scripts/db-init.sh {{.CLI_ARGS}}
 
-  tls-init:
-    desc: Lokalni HTTPS za *.local domene (mkcert sertifikat, nginx 443); bez ovoga radi samo HTTP
+  tls:
+    desc: Lokalni HTTPS za sve domene k-local-a (mkcert CA i sertifikat, HTTP se preusmerava na HTTPS); task services ga pokrece sam kad treba
     dir: '{{.TASKFILE_DIR}}'
+    interactive: true
     cmds:
-      - bash scripts/tls-init.sh
+      - bash scripts/tls.sh
